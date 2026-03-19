@@ -1,13 +1,15 @@
-# Claude Status Bar
+# AI Status Bar
 
-A lightweight macOS menu bar app that shows the real-time status of Claude services.
+A lightweight macOS menu bar app that shows the real-time status of Claude and OpenAI services.
 
 ## Features
 
 - Color-coded status dot in the menu bar (green/yellow/orange/red)
-- Per-service status breakdown (claude.ai, API, Claude Code, etc.)
+- Switch between **Claude** and **OpenAI** status with one click
+- Per-service status breakdown (API, ChatGPT, Claude Code, Codex, etc.)
 - Active incident details with latest updates
 - Auto-refreshes every 60 seconds
+- Auto-update notifications from GitHub Releases
 - Open at Login toggle
 - Zero dependencies — pure Swift + AppKit
 
@@ -45,7 +47,9 @@ make run
 
 ## How It Works
 
-Polls the [Claude status page](https://status.claude.com) API every 60 seconds and displays the overall system health as a colored dot in your menu bar. Click the dot to see per-service status, active incidents, and controls.
+Polls the [Claude](https://status.claude.com) or [OpenAI](https://status.openai.com) status page API every 60 seconds and displays the overall system health as a colored dot in your menu bar. Click the dot to see per-service status, active incidents, switch providers, and more.
+
+Both status pages use the same [Atlassian Statuspage](https://www.atlassian.com/software/statuspage) API format, so adding more providers is straightforward.
 
 ## License
 
