@@ -73,10 +73,8 @@ class MenuBarController: NSObject {
         let url = StatusProvider.current.apiURL
         Task {
             do {
-                let decoder = JSONDecoder()
-                decoder.keyDecodingStrategy = .convertFromSnakeCase
                 let (data, _) = try await URLSession.shared.data(from: url)
-                let response = try decoder.decode(StatusSummary.self, from: data)
+                let response = try JSONDecoder.snakeCase.decode(StatusSummary.self, from: data)
                 await MainActor.run {
                     self.summary = response
                     self.fetchError = nil
