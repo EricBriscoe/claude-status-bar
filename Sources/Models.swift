@@ -12,6 +12,13 @@ struct StatusSummary: Codable {
     let status: OverallStatus
     let components: [ServiceComponent]
     let incidents: [Incident]
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decode(OverallStatus.self, forKey: .status)
+        components = try container.decode([ServiceComponent].self, forKey: .components)
+        incidents = try container.decodeIfPresent([Incident].self, forKey: .incidents) ?? []
+    }
 }
 
 struct OverallStatus: Codable {
