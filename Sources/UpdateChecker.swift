@@ -48,9 +48,7 @@ class UpdateChecker {
         var request = URLRequest(url: Self.releasesURL)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         let (data, _) = try await URLSession.shared.data(for: request)
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode(GitHubRelease.self, from: data)
+        return try JSONDecoder.snakeCase.decode(GitHubRelease.self, from: data)
     }
 
     private func isNewer(_ remote: String, than local: String) -> Bool {
