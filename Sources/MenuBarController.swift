@@ -48,7 +48,7 @@ class MenuBarController: NSObject {
     private static let apiURL = URL(string: "https://status.claude.com/api/v2/summary.json")!
     private static let pageURL = URL(string: "https://status.claude.com")!
     private static let pollInterval: TimeInterval = 60
-    private static let timeFmt: DateFormatter = {
+    private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         return formatter
@@ -66,6 +66,10 @@ class MenuBarController: NSObject {
         }
     }
 
+    deinit {
+        timer?.invalidate()
+    }
+
     private func fetch() {
         Task {
             do {
@@ -76,15 +80,15 @@ class MenuBarController: NSObject {
                 await MainActor.run {
                     self.summary = response
                     self.fetchError = nil
-                    self.lastChecked = Date()
-                    self.updateUI()
                 }
             } catch {
                 await MainActor.run {
                     self.fetchError = error.localizedDescription
-                    self.lastChecked = Date()
-                    self.updateUI()
                 }
+            }
+            await MainActor.run {
+                self.lastChecked = Date()
+                self.updateUI()
             }
         }
     }
@@ -133,7 +137,7 @@ class MenuBarController: NSObject {
         menu.addItem(.separator())
 
         if let lastChecked {
-            addLabel(to: menu, title: "Updated \(Self.timeFmt.string(from: lastChecked))")
+            addLabel(to: menu, title: "Updated \(Self.timeFormatter.string(from: lastChecked))")
         }
 
         addAction(to: menu, title: "Refresh", key: "r", action: #selector(handleRefresh))

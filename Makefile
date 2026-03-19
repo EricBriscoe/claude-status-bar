@@ -3,11 +3,11 @@
 APP_BUNDLE = ClaudeStatus.app
 
 build:
-	swift build -c release
+	swift build -c release --arch arm64 --arch x86_64
 
 app: build
 	@mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
-	@cp .build/release/ClaudeStatusBar "$(APP_BUNDLE)/Contents/MacOS/"
+	@cp "$$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/ClaudeStatusBar" "$(APP_BUNDLE)/Contents/MacOS/"
 	@cp Info.plist "$(APP_BUNDLE)/Contents/"
 	@echo "Built $(APP_BUNDLE)"
 
