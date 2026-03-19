@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build universal binary
+        run: swift build -c release --arch arm64 --arch x86_64
+
+      - name: Assemble app bundle
+        run: |
+          mkdir -p ClaudeStatus.app/Contents/MacOS
+          cp "$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/ClaudeStatusBar" ClaudeStatus.app/Contents/MacOS/
+          cp Info.plist ClaudeStatus.app/Contents/
+
+      - name: Create zip
+        run: zip -r ClaudeStatus.zip ClaudeStatus.app
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ClaudeStatus.zip
+          generate_release_notes: true

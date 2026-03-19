@@ -1,0 +1,7 @@
+.build/
+.swiftpm/
+ClaudeStatus.app/
+ClaudeStatus.zip
+*.xcodeproj/
+xcuserdata/
+.DS_Store
