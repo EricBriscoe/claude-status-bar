@@ -40,13 +40,12 @@ private enum ComponentStatus {
 
 class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
+    private let updateChecker = UpdateChecker()
     private var summary: StatusSummary?
     private var fetchError: String?
     private var lastChecked: Date?
     private var timer: Timer?
 
-    private static let apiURL = URL(string: "https://status.claude.com/api/v2/summary.json")!
-    private static let pageURL = URL(string: "https://status.claude.com")!
     private static let pollInterval: TimeInterval = 60
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -58,7 +57,7 @@ class MenuBarController: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
         statusItem.button?.image = Self.dotImage(color: .systemGray)
-        statusItem.button?.toolTip = "Claude Status"
+        statusItem.button?.toolTip = "\(StatusProvider.current.displayName) Status"
         rebuildMenu()
         fetch()
         timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
@@ -71,11 +70,12 @@ class MenuBarController: NSObject {
     }
 
     private func fetch() {
+        let url = StatusProvider.current.apiURL
         Task {
             do {
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
-                let (data, _) = try await URLSession.shared.data(from: Self.apiURL)
+                let (data, _) = try await URLSession.shared.data(from: url)
                 let response = try decoder.decode(StatusSummary.self, from: data)
                 await MainActor.run {
                     self.summary = response
@@ -93,6 +93,17 @@ class MenuBarController: NSObject {
         }
     }
 
+    private func switchProvider(_ provider: StatusProvider) {
+        StatusProvider.current = provider
+        summary = nil
+        fetchError = nil
+        lastChecked = nil
+        statusItem.button?.image = Self.dotImage(color: .systemGray)
+        statusItem.button?.toolTip = "\(provider.displayName) Status"
+        rebuildMenu()
+        fetch()
+    }
+
     private func updateUI() {
         let color: NSColor = switch summary?.status.indicator {
         case "none": .systemGreen
@@ -107,9 +118,10 @@ class MenuBarController: NSObject {
 
     private func rebuildMenu() {
         let menu = NSMenu()
+        let provider = StatusProvider.current
 
         if let summary {
-            addLabel(to: menu, title: summary.status.description, bold: true)
+            addLabel(to: menu, title: "\(provider.displayName): \(summary.status.description)", bold: true)
             menu.addItem(.separator())
 
             for component in summary.components {
@@ -142,7 +154,19 @@ class MenuBarController: NSObject {
 
         addAction(to: menu, title: "Refresh", key: "r", action: #selector(handleRefresh))
         menu.addItem(.separator())
+
+        for candidate in StatusProvider.allCases {
+            let action = #selector(handleSwitchProvider(_:))
+            let item = NSMenuItem(title: candidate.displayName, action: action, keyEquivalent: "")
+            item.target = self
+            item.state = candidate == provider ? .on : .off
+            item.representedObject = candidate.rawValue
+            menu.addItem(item)
+        }
+
+        menu.addItem(.separator())
         addAction(to: menu, title: "Open Status Page", key: "o", action: #selector(handleOpenPage))
+        addAction(to: menu, title: "Check for Updates", key: "u", action: #selector(handleCheckUpdate))
 
         let loginItem = NSMenuItem(title: "Open at Login", action: #selector(handleToggleLogin), keyEquivalent: "")
         loginItem.target = self
@@ -176,7 +200,17 @@ class MenuBarController: NSObject {
     @objc private func handleRefresh() { fetch() }
 
     @objc private func handleOpenPage() {
-        NSWorkspace.shared.open(Self.pageURL)
+        NSWorkspace.shared.open(StatusProvider.current.pageURL)
+    }
+
+    @objc private func handleSwitchProvider(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let provider = StatusProvider(rawValue: raw) else { return }
+        switchProvider(provider)
+    }
+
+    @objc private func handleCheckUpdate() {
+        updateChecker.check()
     }
 
     @objc private func handleToggleLogin() {

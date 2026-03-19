@@ -7,7 +7,7 @@
     <key>CFBundleIdentifier</key>
     <string>com.github.ericbriscoe.claude-status</string>
     <key>CFBundleName</key>
-    <string>Claude Status</string>
+    <string>AI Status Bar</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
