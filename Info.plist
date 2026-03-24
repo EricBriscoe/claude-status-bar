@@ -9,9 +9,9 @@
     <key>CFBundleName</key>
     <string>AI Status Bar</string>
     <key>CFBundleVersion</key>
-    <string>1.2.0</string>
+    <string>1.0.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.2.0</string>
+    <string>1.0.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>CFBundlePackageType</key>
