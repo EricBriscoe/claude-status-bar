@@ -1,7 +1,7 @@
 import Cocoa
 
 class UpdateChecker {
-    static let appVersion = "1.1.0"
+    static let appVersion = "1.2.0"
 
     private static let releasesURL = URL(
         string: "https://api.github.com/repos/EricBriscoe/claude-status-bar/releases/latest"

@@ -41,6 +41,7 @@ private enum ComponentStatus {
 class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private let updateChecker = UpdateChecker()
+    private let usageTracker = UsageTracker()
     private var summary: StatusSummary?
     private var fetchError: String?
     private var lastChecked: Date?
@@ -57,7 +58,9 @@ class MenuBarController: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
         statusItem.button?.image = Self.dotImage(color: .systemGray)
+        statusItem.button?.imagePosition = .imageLeft
         statusItem.button?.toolTip = "\(StatusProvider.current.displayName) Status"
+        usageTracker.onUpdate = { [weak self] in self?.updateUI() }
         rebuildMenu()
         fetch()
         timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
@@ -78,15 +81,15 @@ class MenuBarController: NSObject {
                 await MainActor.run {
                     self.summary = response
                     self.fetchError = nil
+                    self.lastChecked = Date()
+                    self.updateUI()
                 }
             } catch {
                 await MainActor.run {
                     self.fetchError = error.localizedDescription
+                    self.lastChecked = Date()
+                    self.updateUI()
                 }
-            }
-            await MainActor.run {
-                self.lastChecked = Date()
-                self.updateUI()
             }
         }
     }
@@ -111,6 +114,7 @@ class MenuBarController: NSObject {
         default: .systemGray
         }
         statusItem.button?.image = Self.dotImage(color: color)
+        statusItem.button?.title = usageBarTitle()
         rebuildMenu()
     }
 
@@ -144,6 +148,11 @@ class MenuBarController: NSObject {
             addLabel(to: menu, title: "Loading…")
         }
 
+        if UsageTracker.isEnabled {
+            menu.addItem(.separator())
+            addUsageSection(to: menu)
+        }
+
         menu.addItem(.separator())
 
         if let lastChecked {
@@ -166,10 +175,9 @@ class MenuBarController: NSObject {
         addAction(to: menu, title: "Open Status Page", key: "o", action: #selector(handleOpenPage))
         addAction(to: menu, title: "Check for Updates", key: "u", action: #selector(handleCheckUpdate))
 
-        let loginItem = NSMenuItem(title: "Open at Login", action: #selector(handleToggleLogin), keyEquivalent: "")
-        loginItem.target = self
-        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        menu.addItem(loginItem)
+        addToggle(to: menu, title: "Show Today's Usage", isOn: UsageTracker.showToday, action: #selector(handleToggleUsageToday))
+        addToggle(to: menu, title: "Show 90d Usage", isOn: UsageTracker.show90d, action: #selector(handleToggleUsage90d))
+        addToggle(to: menu, title: "Open at Login", isOn: SMAppService.mainApp.status == .enabled, action: #selector(handleToggleLogin))
 
         menu.addItem(.separator())
         addAction(to: menu, title: "Quit", key: "q", action: #selector(handleQuit))
@@ -195,7 +203,17 @@ class MenuBarController: NSObject {
         menu.addItem(item)
     }
 
-    @objc private func handleRefresh() { fetch() }
+    private func addToggle(to menu: NSMenu, title: String, isOn: Bool, action: Selector) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.state = isOn ? .on : .off
+        menu.addItem(item)
+    }
+
+    @objc private func handleRefresh() {
+        fetch()
+        usageTracker.refresh()
+    }
 
     @objc private func handleOpenPage() {
         NSWorkspace.shared.open(StatusProvider.current.pageURL)
@@ -222,7 +240,88 @@ class MenuBarController: NSObject {
         rebuildMenu()
     }
 
+    @objc private func handleToggleUsageToday() {
+        UsageTracker.showToday.toggle()
+        syncUsageTracker()
+    }
+
+    @objc private func handleToggleUsage90d() {
+        UsageTracker.show90d.toggle()
+        syncUsageTracker()
+    }
+
+    private func syncUsageTracker() {
+        if UsageTracker.isEnabled {
+            usageTracker.start()
+        } else {
+            usageTracker.stop()
+        }
+        updateUI()
+    }
+
     @objc private func handleQuit() { NSApp.terminate(nil) }
+
+    private func addUsageSection(to menu: NSMenu) {
+        switch usageTracker.availability {
+        case .notInstalled:
+            addLabel(to: menu, title: "\u{26A0} Requires Node.js or Bun")
+            addLabel(to: menu, title: "  npx ccusage@latest daily")
+            addLabel(to: menu, title: "  npx @ccusage/codex@latest daily")
+        case .error(let msg):
+            addLabel(to: menu, title: "\u{26A0} Usage: \(msg)")
+        case .unchecked:
+            addLabel(to: menu, title: "Loading usage…")
+        case .available:
+            guard let data = usageTracker.usageData else { return }
+            addLabel(to: menu, title: "Usage (today / 90d)", bold: true)
+            addLabel(to: menu, title: "  Cost: \(Self.formatCostFull(data.costToday)) / \(Self.formatCostFull(data.cost90d))")
+            addLabel(to: menu, title: "  Tokens: \(Self.formatTokens(data.tokensToday)) / \(Self.formatTokens(data.tokens90d))")
+        }
+    }
+
+    private func usageBarTitle() -> String {
+        guard UsageTracker.isEnabled,
+              case .available = usageTracker.availability,
+              let data = usageTracker.usageData else { return "" }
+
+        var parts: [String] = []
+        if UsageTracker.showToday { parts.append(Self.formatCostCompact(data.costToday)) }
+        if UsageTracker.show90d { parts.append(Self.formatCostCompact(data.cost90d)) }
+        guard !parts.isEmpty else { return "" }
+        return " " + parts.joined(separator: "/")
+    }
+
+    private static func formatCostCompact(_ cost: Double) -> String {
+        switch cost {
+        case ..<0.01: return "$0"
+        case ..<10: return String(format: "$%.1f", cost)
+        case ..<1000: return String(format: "$%.0f", cost)
+        default:
+            let k = cost / 1000
+            return k < 10 ? String(format: "$%.1fk", k) : String(format: "$%.0fk", k)
+        }
+    }
+
+    private static let currencyFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = 2
+        return formatter
+    }()
+
+    private static func formatCostFull(_ cost: Double) -> String {
+        currencyFormatter.string(from: NSNumber(value: cost)) ?? String(format: "$%.2f", cost)
+    }
+
+    private static func formatTokens(_ tokens: Int) -> String {
+        switch tokens {
+        case ..<1_000: return "\(tokens)"
+        case ..<1_000_000: return String(format: "%.0fK", Double(tokens) / 1_000)
+        case ..<1_000_000_000: return String(format: "%.1fM", Double(tokens) / 1_000_000)
+        default: return String(format: "%.1fB", Double(tokens) / 1_000_000_000)
+        }
+    }
 
     static func dotImage(color: NSColor) -> NSImage {
         let size = NSSize(width: 18, height: 18)
