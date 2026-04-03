@@ -70,30 +70,34 @@ class UsageTracker {
                 let sinceDate = Self.dateString(daysAgo: 90)
                 let todayStrs = Self.todayStrings()
 
-                var totalCostToday = 0.0
-                var totalCost90d = 0.0
-                var totalTokensToday = 0
-                var totalTokens90d = 0
+                var perProvider: [(costToday: Double, cost90d: Double, tokensToday: Int, tokens90d: Int)] = []
 
                 for pkg in Self.packages {
                     let args = [useBunx ? pkg.bunxPkg : pkg.pkg, "daily", "--json", "--since", sinceDate]
                     guard let output = try? await runProcess(executable: executable, arguments: args),
                           let response = try? JSONDecoder().decode(CcusageResponse.self, from: output) else {
+                        perProvider.append((0, 0, 0, 0))
                         continue
                     }
 
                     let todayEntry = response.daily.last { entry in todayStrs.contains(entry.date) }
-                    totalCostToday += todayEntry?.cost ?? 0
-                    totalTokensToday += todayEntry?.totalTokens ?? 0
-                    totalCost90d += response.totals?.cost ?? 0
-                    totalTokens90d += response.totals?.totalTokens ?? 0
+                    perProvider.append((
+                        costToday: todayEntry?.cost ?? 0,
+                        cost90d: response.totals?.cost ?? 0,
+                        tokensToday: todayEntry?.totalTokens ?? 0,
+                        tokens90d: response.totals?.totalTokens ?? 0
+                    ))
                 }
 
+                let empty = (costToday: 0.0, cost90d: 0.0, tokensToday: 0, tokens90d: 0)
+                let claude = perProvider.indices.contains(0) ? perProvider[0] : empty
+                let codex = perProvider.indices.contains(1) ? perProvider[1] : empty
+
                 let data = UsageData(
-                    costToday: totalCostToday,
-                    cost90d: totalCost90d,
-                    tokensToday: totalTokensToday,
-                    tokens90d: totalTokens90d
+                    claude: .init(costToday: claude.costToday, cost90d: claude.cost90d,
+                                  tokensToday: claude.tokensToday, tokens90d: claude.tokens90d),
+                    codex: .init(costToday: codex.costToday, cost90d: codex.cost90d,
+                                 tokensToday: codex.tokensToday, tokens90d: codex.tokens90d)
                 )
 
                 await MainActor.run {

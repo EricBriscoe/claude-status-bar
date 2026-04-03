@@ -28,8 +28,18 @@ struct CcusageTotals: CostBearing {
 }
 
 struct UsageData {
-    let costToday: Double
-    let cost90d: Double
-    let tokensToday: Int
-    let tokens90d: Int
+    struct ProviderUsage {
+        let costToday: Double
+        let cost90d: Double
+        let tokensToday: Int
+        let tokens90d: Int
+    }
+
+    let claude: ProviderUsage
+    let codex: ProviderUsage
+
+    var costToday: Double { claude.costToday + codex.costToday }
+    var cost90d: Double { claude.cost90d + codex.cost90d }
+    var tokensToday: Int { claude.tokensToday + codex.tokensToday }
+    var tokens90d: Int { claude.tokens90d + codex.tokens90d }
 }

@@ -273,9 +273,10 @@ class MenuBarController: NSObject {
             addLabel(to: menu, title: "Loading usage…")
         case .available:
             guard let data = usageTracker.usageData else { return }
+            let usage = StatusProvider.current == .openai ? data.codex : data.claude
             addLabel(to: menu, title: "Usage (today / 90d)", bold: true)
-            addLabel(to: menu, title: "  Cost: \(Self.formatCostFull(data.costToday)) / \(Self.formatCostFull(data.cost90d))")
-            addLabel(to: menu, title: "  Tokens: \(Self.formatTokens(data.tokensToday)) / \(Self.formatTokens(data.tokens90d))")
+            addLabel(to: menu, title: "  Cost: \(Self.formatCostFull(usage.costToday)) / \(Self.formatCostFull(usage.cost90d))")
+            addLabel(to: menu, title: "  Tokens: \(Self.formatTokens(usage.tokensToday)) / \(Self.formatTokens(usage.tokens90d))")
         }
     }
 
@@ -284,9 +285,10 @@ class MenuBarController: NSObject {
               case .available = usageTracker.availability,
               let data = usageTracker.usageData else { return "" }
 
+        let usage = StatusProvider.current == .openai ? data.codex : data.claude
         var parts: [String] = []
-        if UsageTracker.showToday { parts.append(Self.formatCostCompact(data.costToday)) }
-        if UsageTracker.show90d { parts.append(Self.formatCostCompact(data.cost90d)) }
+        if UsageTracker.showToday { parts.append(Self.formatCostCompact(usage.costToday)) }
+        if UsageTracker.show90d { parts.append(Self.formatCostCompact(usage.cost90d)) }
         guard !parts.isEmpty else { return "" }
         return " " + parts.joined(separator: "/")
     }
