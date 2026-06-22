@@ -44,6 +44,8 @@ There are no automated tests. Verify changes by running `make run` and confirmin
 - `Sources/Models.swift`: Codable models for the Statuspage API + shared `JSONDecoder.snakeCase`
 - `Sources/UsageModels.swift`: Codable models for ccusage JSON output; `CostBearing` protocol for shared cost resolution
 - `Sources/UsageTracker.swift`: polls `npx ccusage` for cost/token data; resolves npx/bunx from login shell PATH
+- `Sources/ClaudeUsageModels.swift`: Codable models for the claude.ai usage API response
+- `Sources/ClaudeUsageTracker.swift`: reads Claude desktop app cookies (Keychain + SQLite + AES-CBC), polls `claude.ai/api/organizations/{org}/usage` for plan limits; uses ephemeral URLSession with redirect blocking
 - `Sources/UpdateChecker.swift`: checks GitHub Releases API for newer versions
 
 ## Conventions

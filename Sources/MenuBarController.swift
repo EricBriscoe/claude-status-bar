@@ -42,6 +42,7 @@ class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private let updateChecker = UpdateChecker()
     private let usageTracker = UsageTracker()
+    private let claudeUsageTracker = ClaudeUsageTracker()
     private var summary: StatusSummary?
     private var fetchError: String?
     private var lastChecked: Date?
@@ -61,6 +62,7 @@ class MenuBarController: NSObject {
         statusItem.button?.imagePosition = .imageLeft
         statusItem.button?.toolTip = "\(StatusProvider.current.displayName) Status"
         usageTracker.onUpdate = { [weak self] in self?.updateUI() }
+        claudeUsageTracker.onUpdate = { [weak self] in self?.updateUI() }
         rebuildMenu()
         fetch()
         timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
@@ -148,6 +150,11 @@ class MenuBarController: NSObject {
             addLabel(to: menu, title: "Loading…")
         }
 
+        if ClaudeUsageTracker.showPlanUsage {
+            menu.addItem(.separator())
+            addClaudeUsageSection(to: menu)
+        }
+
         if UsageTracker.isEnabled {
             menu.addItem(.separator())
             addUsageSection(to: menu)
@@ -175,6 +182,7 @@ class MenuBarController: NSObject {
         addAction(to: menu, title: "Open Status Page", key: "o", action: #selector(handleOpenPage))
         addAction(to: menu, title: "Check for Updates", key: "u", action: #selector(handleCheckUpdate))
 
+        addToggle(to: menu, title: "Show Plan Usage", isOn: ClaudeUsageTracker.showPlanUsage, action: #selector(handleTogglePlanUsage))
         addToggle(to: menu, title: "Show Today's Usage", isOn: UsageTracker.showToday, action: #selector(handleToggleUsageToday))
         addToggle(to: menu, title: "Show 90d Usage", isOn: UsageTracker.show90d, action: #selector(handleToggleUsage90d))
         addToggle(to: menu, title: "Open at Login", isOn: SMAppService.mainApp.status == .enabled, action: #selector(handleToggleLogin))
@@ -213,6 +221,7 @@ class MenuBarController: NSObject {
     @objc private func handleRefresh() {
         fetch()
         usageTracker.refresh()
+        claudeUsageTracker.refresh()
     }
 
     @objc private func handleOpenPage() {
@@ -240,6 +249,16 @@ class MenuBarController: NSObject {
         rebuildMenu()
     }
 
+    @objc private func handleTogglePlanUsage() {
+        ClaudeUsageTracker.showPlanUsage.toggle()
+        if ClaudeUsageTracker.showPlanUsage {
+            claudeUsageTracker.start()
+        } else {
+            claudeUsageTracker.stop()
+        }
+        updateUI()
+    }
+
     @objc private func handleToggleUsageToday() {
         UsageTracker.showToday.toggle()
         syncUsageTracker()
@@ -261,6 +280,38 @@ class MenuBarController: NSObject {
 
     @objc private func handleQuit() { NSApp.terminate(nil) }
 
+    private func addClaudeUsageSection(to menu: NSMenu) {
+        switch claudeUsageTracker.availability {
+        case .noClaude:
+            addLabel(to: menu, title: "\u{26A0} Claude desktop app not found")
+        case .authError(let msg):
+            addLabel(to: menu, title: "\u{26A0} \(msg)")
+        case .error(let msg):
+            addLabel(to: menu, title: "\u{26A0} Plan: \(msg)")
+        case .unchecked:
+            addLabel(to: menu, title: "Loading plan usage…")
+        case .available:
+            guard let data = claudeUsageTracker.usageData else { return }
+            addLabel(to: menu, title: "Plan Usage Limits", bold: true)
+            if let bucket = data.fiveHour {
+                let reset = ClaudeUsageTracker.resetDescription(for: bucket.resetsAt)
+                addLabel(to: menu, title: "  Session:  \(Int(bucket.utilization))% • \(reset)")
+            }
+            if let bucket = data.sevenDay {
+                let reset = ClaudeUsageTracker.resetDescription(for: bucket.resetsAt)
+                addLabel(to: menu, title: "  Weekly:   \(Int(bucket.utilization))% • \(reset)")
+            }
+            if let bucket = data.sevenDaySonnet {
+                let reset = ClaudeUsageTracker.resetDescription(for: bucket.resetsAt)
+                addLabel(to: menu, title: "  Sonnet:   \(Int(bucket.utilization))% • \(reset)")
+            }
+            if let extra = data.extraUsage, extra.isEnabled, let used = extra.usedCredits {
+                let limit = extra.monthlyLimit.map { String(format: "$%.0f", $0) } ?? "∞"
+                addLabel(to: menu, title: "  Extra:    \(String(format: "$%.2f", used)) / \(limit)")
+            }
+        }
+    }
+
     private func addUsageSection(to menu: NSMenu) {
         switch usageTracker.availability {
         case .notInstalled:
@@ -280,15 +331,23 @@ class MenuBarController: NSObject {
     }
 
     private func usageBarTitle() -> String {
-        guard UsageTracker.isEnabled,
-              case .available = usageTracker.availability,
-              let data = usageTracker.usageData else { return "" }
-
         var parts: [String] = []
-        if UsageTracker.showToday { parts.append(Self.formatCostCompact(data.costToday)) }
-        if UsageTracker.show90d { parts.append(Self.formatCostCompact(data.cost90d)) }
+
+        if ClaudeUsageTracker.showPlanUsage,
+           case .available = claudeUsageTracker.availability,
+           let plan = claudeUsageTracker.usageData?.sevenDay ?? claudeUsageTracker.usageData?.fiveHour {
+            parts.append("\(Int(plan.utilization))%")
+        }
+
+        if UsageTracker.isEnabled,
+           case .available = usageTracker.availability,
+           let data = usageTracker.usageData {
+            if UsageTracker.showToday { parts.append(Self.formatCostCompact(data.costToday)) }
+            if UsageTracker.show90d { parts.append(Self.formatCostCompact(data.cost90d)) }
+        }
+
         guard !parts.isEmpty else { return "" }
-        return " " + parts.joined(separator: "/")
+        return " " + parts.joined(separator: " ")
     }
 
     private static func formatCostCompact(_ cost: Double) -> String {
